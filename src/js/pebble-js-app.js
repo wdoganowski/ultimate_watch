@@ -1,4 +1,5 @@
 
+
 function iconFromWeatherId(weatherId) {
   if (weatherId < 600) {
     return 2;
@@ -53,7 +54,7 @@ function locationError(err) {
   console.warn('location error (' + err.code + '): ' + err.message);
   Pebble.sendAppMessage({
     "city":"Location Error",
-    "temperature":"N/A\u00B0C"
+    "temperature":"?\u00B0C"
   });
 }
 

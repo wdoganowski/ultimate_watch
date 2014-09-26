@@ -18,22 +18,69 @@
       {
         "type": "png",
         "name": "IMAGE_SUN",
-        "file": "img/sun.png"
+        "file": "img/openweathermap/01d.png"
       },
       {
         "type": "png",
         "name": "IMAGE_RAIN",
-        "file": "img/rain.png"
+        "file": "img/openweathermap/09d.png"
       },
       {
         "type": "png",
         "name": "IMAGE_CLOUD",
-        "file": "img/cloud.png"
+        "file": "img/openweathermap/04d.png"
       },
       {
         "type": "png",
         "name": "IMAGE_SNOW",
-        "file": "img/snow.png"
+        "file": "img/openweathermap/13d.png"
+      },
+
+      {
+        "type": "png",
+        "name": "IMAGE_BLUETOOTH",
+        "file": "img/bluetooth.png"
+      }
+      ,
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_CHARGING",
+        "file": "img/battery_icons/charging.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_EMPTY",
+        "file": "img/battery_icons/empty.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_2",
+        "file": "img/battery_icons/charge2.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_3",
+        "file": "img/battery_icons/charge3.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_4",
+        "file": "img/battery_icons/charge4.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_5",
+        "file": "img/battery_icons/charge5.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_6",
+        "file": "img/battery_icons/charge6.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_BAT_FULL",
+        "file": "img/battery_icons/FULL.png"
       }
     ]
   }
