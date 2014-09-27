@@ -2,6 +2,7 @@
 
 http://dogan.mit-license.org/
 
+
 ## Pebble examples (simple_analog & weather)
 
 All the examples are released under the MIT License. Please [contact us](mailto:devsupport@getpebble.com) if you would like to use another license.
@@ -14,11 +15,21 @@ All the examples are released under the MIT License. Please [contact us](mailto:
 
     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
 ## Battery icons
 
 Thanks to https://github.com/pebble-hacks/pebble-icons.git
 
 
+## Face (brown background)
+
+Thanks to https://github.com/zalewszczak/pebble.git
 
 
+## Weather icons
 
+Icons made by Rami McMin http://RamiMcM.in from http://www.flaticon.com/packs/justicons/ is licensed under CC BY 3.0
+
+Icons made by GraphBerry http://graphberry.com from http://www.flaticon.com/packs/modern-weather/ is licensed under CC BY 3.0
+
+Icons made by Yannick http://yanlu.de from http://www.flaticon.com/packs/cumulus/ is licensed under CC BY 3.0

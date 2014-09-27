@@ -1,8 +1,8 @@
 #include "pebble.h"
 
 // Sizes 
-#define BT_W 16
-#define BT_H 16
+#define BT_W 9
+#define BT_H 9
 
 #define BLUETOOTH_REFRESH_INTERVAL (30 * 60 * 1000) // 30 minutes in miliseconds
 

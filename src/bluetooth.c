@@ -6,6 +6,8 @@
 static BitmapLayer *icon_layer;
 static GBitmap *icon_bitmap = NULL;
 
+extern Layer *hands_layer;
+
 static void bluetooth_update_proc(bool connected) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "bluetooth state: %d ", connected);
 
@@ -25,8 +27,10 @@ void bluetooth_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer); 
 
   // icon 
-  icon_layer = bitmap_layer_create(GRect(0, 0, BT_W, BT_H));
-  layer_add_child(window_layer, bitmap_layer_get_layer(icon_layer));
+  icon_layer = bitmap_layer_create(GRect((bounds.size.w / 2) + 10, 55, BT_W, BT_H));
+  //layer_add_child(window_layer, bitmap_layer_get_layer(icon_layer));
+  // Add it below watch hands
+  layer_insert_below_sibling(bitmap_layer_get_layer(icon_layer), hands_layer);
 
   // Check current charging status
   bluetooth_update_proc(bluetooth_connection_service_peek());

@@ -1,7 +1,7 @@
 #include "pebble.h"
 
 #include "menu.h"
-#include "weatherwindow.h"
+#include "menudef.h"
 
 static Window *window;
 
@@ -12,22 +12,13 @@ static MenuLayer *menu_layer;
 // A callback is used to specify the amount of sections of menu items
 // With this, you can dynamically add and remove sections
 static uint16_t menu_get_num_sections_callback(MenuLayer *menu_layer, void *data) {
-  return NUM_MENU_SECTIONS;
+  return menu_info.length;
 }
 
 // Each section has a number of items;  we use a callback to specify this
 // You can also dynamically add and remove items using this
 static uint16_t menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index, void *data) {
-  switch (section_index) {
-    case 0:
-      return NUM_FIRST_MENU_ITEMS;
-
-    case 1:
-      return NUM_SECOND_MENU_ITEMS;
-
-    default:
-      return 0;
-  }
+  return menu_info.sections[section_index].length;
 }
 
 // A callback is used to specify the height of the section header
@@ -38,63 +29,22 @@ static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t s
 
 // Here we draw what each header is
 static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, uint16_t section_index, void *data) {
-  // Determine which section we're working with
-  switch (section_index) {
-    case 0:
-      // Draw title text in the section header
-      menu_cell_basic_header_draw(ctx, cell_layer, "Some example items");
-      break;
-
-    case 1:
-      menu_cell_basic_header_draw(ctx, cell_layer, "One more");
-      break;
-  }
+  menu_cell_basic_header_draw(ctx, cell_layer, menu_info.sections[section_index].label);
 }
 
 // This is the menu item draw callback where you specify what each item should look like
 static void menu_draw_row_callback(GContext* ctx, const Layer *cell_layer, MenuIndex *cell_index, void *data) {
-  // Determine which section we're going to draw in
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Menu draw: %d - %d", cell_index->section, cell_index->row);
-  switch (cell_index->section) {
-    case 0:
-      // Use the row to specify which item we'll draw
-      switch (cell_index->row) {
-        case 0:
-          // This is a basic menu item with a title and subtitle
-          menu_cell_basic_draw(ctx, cell_layer, "Basic Item", "With a subtitle", NULL);
-          break;
-
-        case 1:
-          // This is a basic menu icon with a cycling icon
-          menu_cell_basic_draw(ctx, cell_layer, "Icon Item", "Select to cycle", NULL);
-          break;
-
-        case 2:
-          menu_cell_basic_draw(ctx, cell_layer, "Icon Item2", "Select to cycle", NULL);
-          break;
-      }
-      break;
-
-    case 1:
-      switch (cell_index->row) {
-        case 0:
-          // There is title draw for something more simple than a basic menu item
-          menu_cell_title_draw(ctx, cell_layer, "Final Item");
-          break;
-      }
-  }
+  menu_cell_basic_draw(ctx, cell_layer, 
+    menu_info.sections[cell_index->section].cells[cell_index->row].label, 
+    menu_info.sections[cell_index->section].cells[cell_index->row].subtitle, 
+    menu_info.sections[cell_index->section].cells[cell_index->row].icon);
 }
 
 // Here we capture when a user selects a menu item
 void menu_select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
-  // Use the row to specify which item will receive the select action
-  switch (cell_index->row) {
-    // This is the menu item with the cycling icon
-    case 1:
-      weather_window_show();
-      break;
+  if (menu_info.sections[cell_index->section].cells[cell_index->row].execute) {
+    menu_info.sections[cell_index->section].cells[cell_index->row].execute();
   }
-
 }
 
 static void window_load(Window *window) {
@@ -129,10 +79,6 @@ static void window_unload(Window *window) {
   menu_layer_destroy(menu_layer);
 }
 
-static void config_provider(void *context) {
-  //window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
-}
-
 void menu_window_show(void) {
   window_stack_push(window, true /* animated */);
 }
@@ -140,17 +86,12 @@ void menu_window_show(void) {
 void menu_window_init(void) {
   // Main window
   window = window_create();
-  window_set_background_color(window, GColorBlack);
-  window_set_fullscreen(window, true);
+  //window_set_background_color(window, GColorBlack);
+  //window_set_fullscreen(window, true);
   window_set_window_handlers(window, (WindowHandlers) {
     .load = window_load,
     .unload = window_unload
   });
-
-  // Init main window
-
-  // Set key handler
-  window_set_click_config_provider(window, config_provider);
 }
 
 void menu_window_deinit(void) {

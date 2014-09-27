@@ -1,20 +1,22 @@
 #include "pebble.h"
 
-#include "string.h"
-#include "stdlib.h"
+#include <string.h>
+#include <stdlib.h>
 
 #include "ultimate_watch.h"
 #include "simple_analog.h"
 #include "analog_face.h"
 #include "weather.h"
 
+#ifdef SIMPLE_BACKGROUND
 Layer *simple_bg_layer;
+#else
+BitmapLayer *simple_bg_layer;
+#endif
 
 Layer *date_layer;
 TextLayer *day_label;
-char day_buffer[6];
-TextLayer *num_label;
-char num_buffer[4];
+char day_buffer[10];
 
 static GPath *minute_arrow;
 static GPath *hour_arrow;
@@ -23,6 +25,7 @@ Layer *hands_layer;
 
 static Window *the_window;
 
+#ifdef SIMPLE_BACKGROUND
 static void bg_update_proc(Layer *layer, GContext *ctx) {
 
   graphics_context_set_fill_color(ctx, GColorBlack);
@@ -33,6 +36,7 @@ static void bg_update_proc(Layer *layer, GContext *ctx) {
     gpath_draw_filled(ctx, tick_paths[i]);
   }
 }
+#endif
 
 static void hands_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
@@ -75,10 +79,10 @@ static void date_update_proc(Layer *layer, GContext *ctx) {
   struct tm *t = localtime(&now);
 
   strftime(day_buffer, sizeof(day_buffer), "%a", t);
-  text_layer_set_text(day_label, day_buffer);
+  day_buffer[3] = ' ';
+  strftime(&day_buffer[4], sizeof(day_buffer) - 4, "%d", t);
 
-  strftime(num_buffer, sizeof(num_buffer), "%d", t);
-  text_layer_set_text(num_label, num_buffer);
+  text_layer_set_text(day_label, day_buffer);
 }
 
 static void handle_second_tick(struct tm *tick_time, TimeUnits units_changed) {
@@ -96,9 +100,15 @@ void analogface_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer); 
 
   // init layers
+#ifdef SIMPLE_BACKGROUND
   simple_bg_layer = layer_create(bounds);
   layer_set_update_proc(simple_bg_layer, bg_update_proc);
   layer_add_child(window_layer, simple_bg_layer);
+#else
+  simple_bg_layer = bitmap_layer_create(bounds);
+  bitmap_layer_set_bitmap(simple_bg_layer, gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND));
+  layer_add_child(window_layer, bitmap_layer_get_layer(simple_bg_layer));
+#endif
 
   // init date layer -> a plain parent layer to create a date update proc
   date_layer = layer_create(bounds);
@@ -106,24 +116,15 @@ void analogface_window_load(Window *window) {
   layer_add_child(window_layer, date_layer);
 
   // init day
-  day_label = text_layer_create(GRect(bounds.origin.x, bounds.size.h - CITY_H - DATE_DAY_H, DATE_DAY_W, DATE_DAY_H));
+  day_label = text_layer_create(GRect((bounds.size.w / 2) - (DATE_DAY_W / 2), (bounds.size.h / 2) + 5, DATE_DAY_W, DATE_DAY_H));
   text_layer_set_text(day_label, day_buffer);
   text_layer_set_background_color(day_label, GColorBlack);
   text_layer_set_text_color(day_label, GColorWhite);
-  GFont norm18 = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+  text_layer_set_text_alignment(day_label, GTextAlignmentCenter);
+  GFont norm18 = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   text_layer_set_font(day_label, norm18);
 
   layer_add_child(date_layer, text_layer_get_layer(day_label));
-
-  // init num
-  num_label = text_layer_create(GRect(bounds.origin.x + DATE_DAY_W, bounds.size.h - CITY_H - DATE_NUM_H, DATE_NUM_W, DATE_NUM_H));
-
-  text_layer_set_text(num_label, num_buffer);
-  text_layer_set_background_color(num_label, GColorBlack);
-  text_layer_set_text_color(num_label, GColorWhite);
-  text_layer_set_font(num_label, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
-
-  layer_add_child(date_layer, text_layer_get_layer(num_label));
 
   // init hands
   hands_layer = layer_create(bounds);
@@ -135,10 +136,13 @@ void analogface_window_load(Window *window) {
 void analogface_window_unload(Window *window) {
   if (!INC_ANALOGFACE) return;
 
+#ifdef SIMPLE_BACKGROUND
   layer_destroy(simple_bg_layer);
+#else
+  bitmap_layer_destroy(simple_bg_layer);
+#endif
   layer_destroy(date_layer);
   text_layer_destroy(day_label);
-  text_layer_destroy(num_label);
   layer_destroy(hands_layer);
 }
 
@@ -146,7 +150,6 @@ void analogface_init(Window *window) {
   if (!INC_ANALOGFACE) return;
 
   day_buffer[0] = '\0';
-  num_buffer[0] = '\0';
   the_window = window;
 
   // init hand paths
@@ -154,8 +157,8 @@ void analogface_init(Window *window) {
   hour_arrow = gpath_create(&HOUR_HAND_POINTS);
 
   Layer *window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(window_layer);
-  const GPoint center = grect_center_point(&bounds);
+  // GRect bounds = layer_get_bounds(window_layer);
+  const GPoint center = {144 / 2, 168 / 2}; //grect_center_point(&bounds);
   gpath_move_to(minute_arrow, center);
   gpath_move_to(hour_arrow, center);
 

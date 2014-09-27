@@ -6,6 +6,8 @@
 static BitmapLayer *icon_layer;
 static GBitmap *icon_bitmap = NULL;
 
+extern Layer *hands_layer;
+
 static void battery_update_proc(BatteryChargeState charge) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Battery state: %d percent, chargin is %d, cable is %d", charge.charge_percent, charge.is_charging, charge.is_plugged);
 
@@ -30,8 +32,10 @@ void battery_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer); 
 
   // icon 
-  icon_layer = bitmap_layer_create(GRect(bounds.size.w - BAT_W, 0, BAT_W, BAT_H));
-  layer_add_child(window_layer, bitmap_layer_get_layer(icon_layer));
+  icon_layer = bitmap_layer_create(GRect((bounds.size.w / 2) - 17, 51, BAT_W, BAT_H));
+  //layer_add_child(window_layer, bitmap_layer_get_layer(icon_layer));
+  // Add it below watch hands
+  layer_insert_below_sibling(bitmap_layer_get_layer(icon_layer), hands_layer);
 
   // Check current charging status
   battery_update_proc(battery_state_service_peek());

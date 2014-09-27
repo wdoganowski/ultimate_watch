@@ -1,7 +1,7 @@
 #include "pebble.h"
 
 #include "mainwindow.h"
-#include "weatherwindow.h"
+#include "forecastwindow.h"
 #include "menu.h"
 
 #include "ultimate_watch.h"
@@ -27,7 +27,24 @@ static void window_unload(Window *window) {
 }
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  menu_window_show();
+  switch(click_recognizer_get_button_id(recognizer)) {
+    case BUTTON_ID_UP: {
+      break;
+    }
+    case BUTTON_ID_SELECT: {
+      menu_window_show();
+      break;
+    }
+    case BUTTON_ID_DOWN: {
+      break;
+    }
+    case NUM_BUTTONS: {
+      break;
+    }
+    case BUTTON_ID_BACK: {
+      break;
+    }
+  }
 }
 
 static void config_provider(void *context) {
