@@ -9,21 +9,7 @@
     "watchface": false
   },
   "appKeys": {
-    "type": 0,
-
-    "icon": 1,
-    "temperature": 2,
-    "city": 3,
-    
-    "fcast_dt": 4,
-    "fcast_icon": 5,
-    "fcast_desc": 6,
-    "fcast_preasure": 7,
-    "fcast_humidity": 8,
-    "fcast_wind": 9,
-    "fcast_clouds": 10,
-    "fcast_rain": 11,
-    "fcast_snow": 12
+    "data": 0
   },
   "resources": {
     "media": [
@@ -38,6 +24,18 @@
         "file": "img/bluetooth9x9.png"
       },
 
+
+
+      {
+        "type": "png",
+        "name": "IMAGE_16_EMPTY",
+        "file": "img/flaticon/cumulus/16/empty.png"
+      },
+      {
+        "type": "png",
+        "name": "IMAGE_32_UPDATE",
+        "file": "img/flaticon/cumulus/32/rotate1.png"
+      },
 
 
       {

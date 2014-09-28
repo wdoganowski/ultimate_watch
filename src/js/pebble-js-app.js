@@ -1,65 +1,53 @@
 
-var req_type = 0; // 0 = Current weather, 1 = 5 day forecast
+var messages = [];
+ 
+function sendMessage() {
+  if (messages.length === 0) {
+    return;
+  }
 
+  var message = messages.shift();
+  console.log("SENDING " + JSON.stringify(message));
+  Pebble.sendAppMessage(message, ack, nack);
+
+  function ack() {
+    console.log("**** ACK "); // + JSON.stringify(message));
+    sendMessage();
+    // Do nothing!
+  }
+  function nack() {
+    console.log("NACK " + JSON.stringify(message));
+    messages.unshift(message);
+    sendMessage();
+  }
+}
+ 
 function fetchWeather(latitude, longitude) {
   var response;
   var req = new XMLHttpRequest();
 
-  if (req_type == 0) {
-    req.open('GET', "http://api.openweathermap.org/data/2.1/find/city?" +
-      "lat=" + latitude + "&lon=" + longitude + "&cnt=1", true);
-    req.onload = function(e) {
-      if (req.readyState == 4) {
-        if(req.status == 200) {
-          console.log(req.responseText);
-          response = JSON.parse(req.responseText);
-          var temperature, icon, city;
-          if (response && response.list && response.list.length > 0) {
-            var weatherResult = response.list[0];
-            temperature = Math.round(weatherResult.main.temp - 273.15);
-            icon = weatherResult.weather[0].icon;
-            city = weatherResult.name;
-            console.log(temperature);
-            console.log(icon);
-            console.log(city);
-            Pebble.sendAppMessage({
-              "icon":icon,
-              "temperature":temperature + "\u00B0C",
-              "city":city});
-          }
+  req.open('GET', "http://api.openweathermap.org/data/2.5/forecast/daily?" +
+    "lat=" + latitude + "&lon=" + longitude + "&cnt=5&units=metric", true);
+  req.onload = function(e) {
+    if (req.readyState == 4) {
+      if(req.status == 200) {
+        console.log(req.responseText);
 
-        } else {
-          console.log("Error");
+        messages.push({"data": req.responseText});
+        sendMessage(); 
+        /*
+        response = JSON.parse(req.responseText);
+        if (response && response.list && response.list.length > 0) {
+          for (var i = 0; i < response.list.length; i++) {
+            //var weatherResult = response.list[i];
+            console.log(JSON.stringify(response.list[i]));
+            messages.push({"data": JSON.stringify(response.list[i])});
+            sendMessage();    
+          }      
         }
-      }
-    }
-  } else {
-    var day = req_type - 1;
-    req.open('GET', "http://api.openweathermap.org/data/2.5/forecast/daily?" +
-      "lat=" + latitude + "&lon=" + longitude + "&cnt=5", true);
-    req.onload = function(e) {
-      if (req.readyState == 4) {
-        if(req.status == 200) {
-          console.log(req.responseText);
-          response = JSON.parse(req.responseText);
-          var fcast_dt, fcast_icon, fcast_desc;
-          if (response && response.list && response.list.length > 0) {
-            var weatherResult = response.list[day];
-            fcast_dt = weatherResult.dt;
-            fcast_icon = weatherResult.weather[0].icon;
-            fcast_desc = weatherResult.weather[0].description;
-            console.log(fcast_dt);
-            console.log(fcast_icon);
-            console.log(fcast_desc);
-            Pebble.sendAppMessage({
-              "fcast_dt": fcast_dt,
-              "fcast_icon": fcast_icon,
-              "fcast_desc": fcast_desc});
-          }
-
-        } else {
-          console.log("Error");
-        }
+        */
+      } else {
+        console.log("Error");
       }
     }
   }
@@ -91,10 +79,8 @@ Pebble.addEventListener("ready",
 
 Pebble.addEventListener("appmessage",
                         function(e) {
-                          req_type = e.payload.type;
                           window.navigator.geolocation.getCurrentPosition(locationSuccess, locationError, locationOptions);
                           console.log(e.type);
-                          console.log(e.payload.type);
                           console.log("message!");
                         });
 
