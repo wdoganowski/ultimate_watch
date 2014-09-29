@@ -34,6 +34,7 @@ function fetchWeather(latitude, longitude) {
         console.log(req.responseText);
 
         messages.push({"data": req.responseText});
+        //messages.push({"data": '{"test_label":"test_value"}'});
         sendMessage(); 
         /*
         response = JSON.parse(req.responseText);

@@ -2,7 +2,7 @@
 
 #include "openweather.h"
 #include "jsonparser.h"
-#include "json.h"
+#include "jsmn.h"
 
 static AppSync sync;
 static uint8_t sync_buffer[2048];
@@ -189,16 +189,23 @@ static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tup
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
 
     //    if (sprintf(buf, "%d\u00B0C", forecast_data[0].temp.day)) {
-    json_settings settings = { 0 };
-    char* error_buf = malloc(100);
-    json_value* parsed = json_parse_ex(&settings, new_tuple->value->cstring, strlen(new_tuple->value->cstring), error_buf);
-    if (parsed) {
-      int result = fill_forecast_struct(parsed);
-      json_value_free(parsed);
+    jsmn_parser parser;
+    jsmnerr_t result;
+    int num_tokens = 300;
+    jsmntok_t* tokens = malloc(num_tokens * sizeof(jsmntok_t));
+
+    if (tokens) {
+      jsmn_init(&parser);
+      result = jsmn_parse(&parser, new_tuple->value->cstring, tokens, num_tokens);
+      if (result == JSMN_SUCCESS) {
+        fill_forecast_struct(new_tuple->value->cstring, tokens, 0, false);
+      } else {
+        APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN ERROR %d", (int)result);
+      }
+      free(tokens);
     } else {
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "JSON error: %s", error_buf);
+      APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN No memory for tokens");
     }
-    if (error_buf) free(error_buf);
 
     openweather_issue_callbacks();
   }

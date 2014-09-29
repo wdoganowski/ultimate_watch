@@ -13,14 +13,14 @@ typedef struct WeatherIcon {
 
 typedef struct ForecastHeader {
   struct city {
-    unsigned int id;
+    //unsigned int id;
     char* name;
-    struct coord {
-      char* lon;
-      char* lat;
-    } cord;
-    char* country;
-    unsigned int population;
+    //struct coord {
+    //  char* lon;
+    //  char* lat;
+    //} cord;
+    //char* country;
+    //unsigned int population;
   } city;
   unsigned int cnt;
 } ForecastHeader;
