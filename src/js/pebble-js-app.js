@@ -21,11 +21,23 @@ function sendMessage() {
     sendMessage();
   }
 }
- 
+
 function fetchWeather(latitude, longitude) {
   var response;
   var req = new XMLHttpRequest();
 
+  req.addEventListener("error", function(e) {
+    console.log("Error handler");
+    messages.push({"data":'{"error":"http error"}'});
+    sendMessage();
+  }, false);
+  req.addEventListener("abort", function(e) {
+    console.log("Abort handler");
+    messages.push({"data":'{"error":"http abort"}'});
+    sendMessage();
+  }, false);
+
+  console.log("Requesting data");
   req.open('GET', "http://api.openweathermap.org/data/2.5/forecast/daily?" +
     "lat=" + latitude + "&lon=" + longitude + "&cnt=5&units=metric", true);
   req.onload = function(e) {
@@ -33,7 +45,7 @@ function fetchWeather(latitude, longitude) {
       if(req.status == 200) {
         console.log(req.responseText);
 
-        messages.push({"data": req.responseText});
+        messages.push({"data": req.responseText.replace(/[^\x00-\x7F]/g, "")});
         //messages.push({"data": '{"test_label":"test_value"}'});
         sendMessage(); 
         /*
@@ -48,7 +60,9 @@ function fetchWeather(latitude, longitude) {
         }
         */
       } else {
-        console.log("Error");
+        console.log("HTTP Error");
+        messages.push({"data":'{"error":"http error"}'});
+        sendMessage();
       }
     }
   }
@@ -62,10 +76,9 @@ function locationSuccess(pos) {
 
 function locationError(err) {
   console.warn('location error (' + err.code + '): ' + err.message);
-  Pebble.sendAppMessage({
-    "city":"Location Error",
-    "temperature":"?\u00B0C"
-  });
+
+  messages.push({"data":'{"error":"location error"}'});
+  sendMessage();
 }
 
 var locationOptions = { "timeout": 15000, "maximumAge": 60000 }; 

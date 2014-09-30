@@ -1,3 +1,5 @@
+#pragma once
+
 #include "pebble.h"
 
 #define DATE_DAY_W 50

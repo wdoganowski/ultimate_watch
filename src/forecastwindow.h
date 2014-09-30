@@ -1,3 +1,5 @@
+#pragma once
+
 #include "pebble.h"
 
 #define FCAST_ICON_H 32

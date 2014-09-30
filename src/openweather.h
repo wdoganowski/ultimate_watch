@@ -1,3 +1,5 @@
+#pragma once
+
 #include "pebble.h"
 
 #define OPENWEATHER_REFRESH_INTERVAL (10 * 60 * 1000) // 10 minutes in miliseconds
@@ -38,7 +40,7 @@ typedef struct ForecastDay {
   unsigned int pressure;
   unsigned int humidity;
   struct weather {
-    unsigned int id;
+    //unsigned int id;
     char* main;
     char* description;
     char* icon;

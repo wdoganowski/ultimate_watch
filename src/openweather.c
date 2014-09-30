@@ -175,8 +175,14 @@ static void sync_error_callback(DictionaryResult dict_error, AppMessageResult ap
   APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d %s", app_message_error, translate_error(app_message_error));
 
   // Increase the update rate
-  set_timer(OPENWEATHER_GET_INTERVAL);
+  if (app_message_error == APP_MSG_SEND_TIMEOUT ||
+      app_message_error == APP_MSG_NOT_CONNECTED ||
+      app_message_error == APP_MSG_APP_NOT_RUNNING) {
+      set_timer(OPENWEATHER_GET_INTERVAL);
+  }
 }
+
+int tmp = 0;
 
 static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync received: %u", (unsigned int)key);
@@ -187,18 +193,18 @@ static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tup
   // Interpret the weather
   if (key == OPENWEATHER_KEY) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "*************************** PROCESSING %d free heap %d", ++tmp, heap_bytes_free());
 
-    //    if (sprintf(buf, "%d\u00B0C", forecast_data[0].temp.day)) {
     jsmn_parser parser;
     jsmnerr_t result;
     int num_tokens = 300;
-    jsmntok_t* tokens = malloc(num_tokens * sizeof(jsmntok_t));
+    jsmntok_t* tokens = calloc(num_tokens, sizeof(jsmntok_t));
 
     if (tokens) {
       jsmn_init(&parser);
       result = jsmn_parse(&parser, new_tuple->value->cstring, tokens, num_tokens);
       if (result == JSMN_SUCCESS) {
-        fill_forecast_struct(new_tuple->value->cstring, tokens, 0, false);
+        fill_forecast_struct(new_tuple->value->cstring, tokens, 0, 0, NULL);
       } else {
         APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN ERROR %d", (int)result);
       }
@@ -206,6 +212,8 @@ static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tup
     } else {
       APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN No memory for tokens");
     }
+
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "*************************** FINISHED %d free heap %d", tmp--, heap_bytes_free());
 
     openweather_issue_callbacks();
   }
@@ -238,6 +246,7 @@ static void set_timer(uint32_t interval) {
   if (interval) {
     update_interval = interval;
   }
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Update interval set to %u", (unsigned int)update_interval);  
   update_timer = app_timer_register(update_interval, update_proc, NULL);
 }
 

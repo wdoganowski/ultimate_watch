@@ -7,13 +7,13 @@
 
 // based on http://alisdair.mcdiarmid.org/2012/08/14/jsmn-example.html
 
-bool json_token_streq(const char *js, jsmntok_t *t, char *s)
+static bool json_token_streq(const char *js, jsmntok_t *t, char *s)
 {
   return (strncmp(js + t->start, s, t->end - t->start) == 0
           && strlen(s) == (size_t) (t->end - t->start));
 }
 
-char * json_token_tostr(const char *js, jsmntok_t *t)
+static char * json_token_tostr(const char *js, jsmntok_t *t)
 {
   char *local = (char *)js;
   local[t->end] = '\0';
@@ -21,38 +21,48 @@ char * json_token_tostr(const char *js, jsmntok_t *t)
 }
 
 // num_tokens - number of tokens in object, 0 for objects and primitives
-int fill_forecast_struct(const char* js, jsmntok_t * tokens, unsigned int num_tokens, bool label) 
+// label is a pointer of the label of the value, object or array, null in case new label is expected
+static unsigned int depth = 0;
+static char labels[3/*max depth*/][20/*max label size*/];
+int fill_forecast_struct(const char* js, jsmntok_t * tokens, unsigned int num_tokens, unsigned int i, char* label) 
 {
-  unsigned int i = 0, error = 0;
+  unsigned int error = 0;
+
+  if (depth > ARRAY_LENGTH(labels)) log_die("We are too deep");
 
   do
   {
     jsmntok_t *t = &tokens[i];
     
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "fill_forecast_struct i %d num %d label %d type %d", i, num_tokens, label, t->type);
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "fill_forecast_struct depth %d %s i %d num %d label %s type %d", depth, depth?labels[depth]-1:"root", i, num_tokens, label?label:"none", t->type);
   
-    if (label && t->type!=JSMN_STRING) log_die("Label must be a string");
+    if (!label && t->type!=JSMN_STRING) log_die("Label must be a string");
 
     switch (t->type)
     {
       case JSMN_PRIMITIVE:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_PRIMITIVE - value %s", json_token_tostr(js, t));
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_PRIMITIVE - %s { %s : %s }", depth?labels[depth-1]:"root", label?label:"none", json_token_tostr(js, t));
         break;
       case JSMN_STRING:
-          if (label) {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - label %s", json_token_tostr(js, t));
-            error = fill_forecast_struct(js, &tokens[++i], 0, false);
-        } else {
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - value %s", json_token_tostr(js, t));
-        }
+          if (!label) {
+            char* new_label = json_token_tostr(js, t);
+            //APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - label %s", new_label);
+            error = fill_forecast_struct(js, &tokens[++i], 0, 0, new_label);
+          } else {
+            APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - %s { %s : %s }", depth?labels[depth-1]:"root", label, json_token_tostr(js, t));
+          }
         break;
       case JSMN_OBJECT:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_OBJECT");
-        error = fill_forecast_struct(js, &tokens[++i], t->size, true);
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_OBJECT label %s %s", depth?labels[depth]-1:"root", label?label:"none");
+        snprintf(labels[depth++], 20, label);
+        error = fill_forecast_struct(js, &tokens[++i], t->size, 0, NULL);
+        depth--;
         break;
       case JSMN_ARRAY:
-        error = fill_forecast_struct(js, &tokens[++i], t->size, true);
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_ARRAY");
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_ARRAY label %s %s", depth?labels[depth-1]:"root", label?label:"none");
+        snprintf(labels[depth++], 20, label);
+        error = fill_forecast_struct(js, &tokens[++i], t->size, 0, NULL);
+        depth--;
         break;
       default:
         log_die("Invalid state");

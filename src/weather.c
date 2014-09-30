@@ -6,6 +6,7 @@
 
 static OpenweatherCallback weather_callback = NULL;
 
+static char temperature[6]; // "-99oC"
 static TextLayer *temperature_layer;
 static BitmapLayer *icon_layer;
 static GBitmap *icon_bitmap = NULL;
@@ -26,7 +27,8 @@ static void weather_update_proc(void) {
     bitmap_layer_set_bitmap(icon_layer, icon_bitmap);
 
     // Temperature
-    text_layer_set_text(temperature_layer, forecast_data[0].temp.day);
+    snprintf(temperature, sizeof(temperature), "%s\u00B0C", forecast_data[0].temp.day);
+    text_layer_set_text(temperature_layer, temperature);
   }
 }
 
