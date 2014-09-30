@@ -7,7 +7,7 @@ function sendMessage() {
   }
 
   var message = messages.shift();
-  console.log("SENDING " + JSON.stringify(message));
+  console.log("SENDING " /*+ JSON.stringify(message)*/);
   Pebble.sendAppMessage(message, ack, nack);
 
   function ack() {
@@ -48,12 +48,12 @@ function fetchWeather(latitude, longitude) {
         if (response && response.list && response.list.length > 0) {
           messages.push({"city": response.city.name.replace(/[^\x00-\x7F]/g, "_")})
           sendMessage(); 
-          messages.push({"cnt": response.list.length})
-          sendMessage(); 
-          /*for (var i = 0; i < response.list.length; i++)*/ {var i=0;
-            messages.push({"forecast": '{"day":' + i + ', "data": ' + JSON.stringify(response.list[i]) + '}'}); 
+          /*messages.push({"cnt": response.list.length})
+          sendMessage(); */
+          /*for (var i = 0; i < response.list.length; i++) {
+            messages.push({"forecast": {"day": i, "data": JSON.stringify(response.list[i]) }}); 
             sendMessage(); 
-          }
+          }*/
         } else {
           console.log("JSON Error");
           messages.push({"error":'{"error":"json error"}'});

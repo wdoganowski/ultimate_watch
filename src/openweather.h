@@ -13,21 +13,7 @@ typedef struct WeatherIcon {
   uint32_t resource_id;
 } WeatherIcon;
 
-typedef struct ForecastHeader {
-  struct city {
-    //unsigned int id;
-    char* name;
-    //struct coord {
-    //  char* lon;
-    //  char* lat;
-    //} cord;
-    //char* country;
-    //unsigned int population;
-  } city;
-  unsigned int cnt;
-} ForecastHeader;
-
-typedef struct ForecastDay {
+typedef struct ForecastDayType {
   unsigned long dt;
   struct temp {
     char* day;
@@ -48,10 +34,15 @@ typedef struct ForecastDay {
   unsigned int speed;
   unsigned int deg;
   unsigned int clouds;
-} ForecastDay;
+} ForecastDayType;
 
-extern ForecastHeader forecast_header;
-extern ForecastDay forecast_data[OPENWEATHER_FCAST_DAYS];
+typedef struct ForecastType {
+  char* city;
+  unsigned int cnt;
+  ForecastDayType * day;
+} ForecastType;
+
+extern ForecastType forecast_data;
 
 extern const WeatherIcon weather_icons_16[];
 extern const WeatherIcon weather_icons_32[];

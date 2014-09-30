@@ -1,23 +1,27 @@
 #include "pebble.h"
 
+#define DEBUG_ON
+#include "debug.h"
+
 #include "openweather.h"
 #include "jsonparser.h"
-#include "jsmn.h"
 
 static AppSync sync;
 static uint8_t sync_buffer[2048];
 static AppTimer* update_timer = NULL;
 static uint32_t update_interval = OPENWEATHER_REFRESH_INTERVAL;
 
-static OpenweatherCallback callback_stack[OPENWEATHER_MAX_CALLBACKS];
+static OpenweatherCallback callback_stack[OPENWEATHER_MAX_CALLBACKS] = {NULL, NULL};
 static uint8_t callback_num = 0;
 
 enum WeatherKey {
-  OPENWEATHER_KEY = 0x0,  // TUPLE_CSTRING
+  OPENWEATHER_ERROR_KEY    = 0, // TUPLE_CSTRING
+  OPENWEATHER_CITY_KEY     = 1, // TUPLE_CSTRING
+  OPENWEATHER_CNT_KEY      = 2, // TUPLE_INT
+  OPENWEATHER_FORECAST_KEY = 3, // TUPLE_CSTRING
 };
 
-ForecastHeader forecast_header;
-ForecastDay forecast_data[OPENWEATHER_FCAST_DAYS];
+ForecastType forecast_data = {NULL, 0, NULL};
 /*
  * Icons
  */
@@ -140,11 +144,14 @@ static char *translate_error(AppMessageResult result) {
 
 static void set_timer(uint32_t interval);
 
+
 OpenweatherCallback openweather_register_callback(OpenweatherCallback callback) {
   if (callback_num >= OPENWEATHER_MAX_CALLBACKS) {
+    LOG_DEBUG("Too many callback, already have %d", callback_num);
     return NULL;
   } else {
     callback_stack[callback_num++] = callback;
+    LOG_DEBUG("Callback registered %d", callback_num);
     callback();
     return callback;
   }
@@ -158,17 +165,56 @@ void openweather_deregister_callback(OpenweatherCallback callback) {
       {
         callback_stack[j - 1] = callback_stack[j];
       }
-      callback_stack[--callback_num] = NULL;
+      LOG_DEBUG("Callback deregistered %d", callback_num);
+      callback_stack[callback_num--] = NULL;
       break;
     }
   }
 }
 
+void openweather_deregister_all_callbacks(void) {
+  for (int i = 0; i < OPENWEATHER_MAX_CALLBACKS; ++i)
+  {
+    callback_stack[i] = NULL;
+  }
+  callback_num = 0;
+}
+
 static void openweather_issue_callbacks(void) {
+  LOG_DEBUG("Number of callbacks %d", callback_num);
   for (int i = 0; i < callback_num; ++i)
   {
     if (callback_stack[i]) callback_stack[i]();
   }
+}
+
+void object_callback(JSP_ValueType type, char* label, uint16_t label_length, char* value, uint16_t value_length) {
+/*  char* l = calloc(label_length + 1, sizeof(char)); 
+  char* v = calloc(value_length + 1, sizeof(char)); 
+
+  snprintf(l, label_length + 1, "%s", label); 
+  snprintf(v, value_length + 1, "%s", value); 
+
+  APP_LOG(APP_LOG_LEVEL_INFO, "object_callback(%s, %s, %d, %s, %d)", type_labels[type], l, label_length, v, value_length);
+
+  free(v); 
+  free(l); 
+*/
+  if (forecast_data.day) {
+    forecast_data.day->temp.day = "20";
+    forecast_data.day->weather.icon = "01d";
+    forecast_data.cnt = 1;
+  }
+}
+
+void array_callback(JSP_ValueType type, char* value, uint16_t value_length) {
+/*  char* v = calloc(value_length + 1, sizeof(char)); 
+
+  snprintf(v, value_length + 1, "%s", value); 
+
+  APP_LOG(APP_LOG_LEVEL_INFO, "array_callback(%s, %s, %d)", type_labels[type], v, value_length);
+
+  free(v); */
 }
 
 static void sync_error_callback(DictionaryResult dict_error, AppMessageResult app_message_error, void *context) {
@@ -182,40 +228,46 @@ static void sync_error_callback(DictionaryResult dict_error, AppMessageResult ap
   }
 }
 
-int tmp = 0;
+static void set_string(char** dest, const char* source) {      
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Set string: dest %s source %s size %d", (*dest)?(*dest):"NULL", source?source:"NULL", strlen(source));
+  if (*dest) free(*dest);
+  *dest = malloc(strlen(source));
+  if (*dest) strcpy(*dest, source);
+}
 
 static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync received: %u", (unsigned int)key);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync received: %lu", key);
 
   // Set the timer to normal rate
-  set_timer(OPENWEATHER_REFRESH_INTERVAL);
+  if (update_interval != OPENWEATHER_REFRESH_INTERVAL) set_timer(OPENWEATHER_REFRESH_INTERVAL);
 
-  // Interpret the weather
-  if (key == OPENWEATHER_KEY) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "*************************** PROCESSING %d free heap %d", ++tmp, heap_bytes_free());
+  // Interpret the forecast
+  switch (key) {
+    case OPENWEATHER_ERROR_KEY:
+      LOG_ERROR("Error received %s", new_tuple->value->cstring);
+      break;
+    case OPENWEATHER_CITY_KEY:
+      // reset the forecast & set the city
+      forecast_data.cnt = 0;
+      set_string(&(forecast_data.city), new_tuple->value->cstring);
+      LOG_DEBUG("City set %s cnt %d", forecast_data.city?forecast_data.city:"NULL", forecast_data.cnt);
+      break;
+    case OPENWEATHER_CNT_KEY:
+      LOG_DEBUG("Cnt received %d", new_tuple->value->uint8);
+      break;
+    case OPENWEATHER_FORECAST_KEY: {
+        if (new_tuple->value->cstring)
+          APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
+        else 
+          APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: NULL");
 
-    jsmn_parser parser;
-    jsmnerr_t result;
-    int num_tokens = 300;
-    jsmntok_t* tokens = calloc(num_tokens, sizeof(jsmntok_t));
-
-    if (tokens) {
-      jsmn_init(&parser);
-      result = jsmn_parse(&parser, new_tuple->value->cstring, tokens, num_tokens);
-      if (result == JSMN_SUCCESS) {
-        fill_forecast_struct(new_tuple->value->cstring, tokens, 0, 0, NULL);
-      } else {
-        APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN ERROR %d", (int)result);
+        JSP_ErrorType result = json_parser(new_tuple->value->cstring);
+        if (result == JSP_OK) openweather_issue_callbacks();
+        else LOG_DEBUG("Json parser error 0x%x", result);
       }
-      free(tokens);
-    } else {
-      APP_LOG(APP_LOG_LEVEL_ERROR, "JSMN No memory for tokens");
-    }
-
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "*************************** FINISHED %d free heap %d", tmp--, heap_bytes_free());
-
-    openweather_issue_callbacks();
+      break;
+    default:
+      LOG_ERROR("Unknown key received %lu", key);
   }
 }
 
@@ -252,34 +304,38 @@ static void set_timer(uint32_t interval) {
 
 void openweather_init(void) {
   // init forecast structure
-  forecast_header.cnt = 0;
+  forecast_data.day = calloc(OPENWEATHER_FCAST_DAYS, sizeof(ForecastDayType));
 
-  // init callbacks
-  for (int i = 0; i < OPENWEATHER_MAX_CALLBACKS; ++i)
-  {
-    callback_stack[i] = NULL;
-  }
-  callback_num = 0;
+  // init json parser
+  json_register_callbacks(object_callback, array_callback);
 
   // Open channel
   const int inbound_size = app_message_inbox_size_maximum();
   const int outbound_size = app_message_outbox_size_maximum();
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Determined sizes: Inbox %u Outbox %u", inbound_size, outbound_size);  
+
   app_message_open(inbound_size, outbound_size);
 
   // Init sync
   Tuplet initial_values[] = {
-    TupletCString(OPENWEATHER_KEY, "")
+    TupletCString(OPENWEATHER_ERROR_KEY, ""), 
+    TupletCString(OPENWEATHER_CITY_KEY, ""),
+    TupletInteger(OPENWEATHER_CNT_KEY, 0),
+    TupletCString(OPENWEATHER_FORECAST_KEY, "")
   };
   app_sync_init(&sync, sync_buffer, sizeof(sync_buffer), initial_values, ARRAY_LENGTH(initial_values),
       sync_tuple_changed_callback, sync_error_callback, NULL);
 
   // Set update
   set_timer(OPENWEATHER_REFRESH_INTERVAL);
+
 }
 
 void openweather_deinit(void) {
   app_message_deregister_callbacks();
   if (update_timer) app_timer_cancel(update_timer);
   app_sync_deinit(&sync);
+  openweather_deregister_all_callbacks();
+  forecast_data.cnt = 0;
+  if (forecast_data.day) free(forecast_data.day);
 }

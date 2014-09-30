@@ -1,163 +1,371 @@
-#include "pebble.h"
+/*
+ * MIT License http://dogan.mit-license.org/
+ */
 
-#include "jsmn.h"
-#include "openweather.h"
+#include <pebble.h>
 
-#define log_die(s) {APP_LOG(APP_LOG_LEVEL_ERROR,s); return 1;}
+#include "jsonparser.h"
 
-// based on http://alisdair.mcdiarmid.org/2012/08/14/jsmn-example.html
+#define DEBUG_OFF
+#include "debug.h"
 
-static bool json_token_streq(const char *js, jsmntok_t *t, char *s)
-{
-  return (strncmp(js + t->start, s, t->end - t->start) == 0
-          && strlen(s) == (size_t) (t->end - t->start));
+DEBUG_CODE(void print_value(char* value, uint16_t value_length) { \
+    char* v = calloc(value_length + 1, sizeof(char)); \
+    snprintf(v, value_length + 1, "%s", value); \
+    APP_LOG(APP_LOG_LEVEL_INFO, "      Found value [%d] %s ", value_length, v); \
+    free(v); \
+});
+
+DEBUG_CODE(void print_pair(char* label, uint16_t label_length, char* value, uint16_t value_length) { \
+  char* l = calloc(label_length + 1, sizeof(char)); \
+  char* v = calloc(value_length + 1, sizeof(char)); \
+  snprintf(l, label_length + 1, "%s", label); \
+  snprintf(v, value_length + 1, "%s", value); \
+  APP_LOG(APP_LOG_LEVEL_INFO, "Found label [%d] %s : [%d] %s", label_length, l, value_length, v); \
+  free(v); free(l); \
+});
+
+static JSP_ObjectCallback object_callback_ptr = NULL;
+static JSP_ArrayCallback array_callback_ptr = NULL;
+
+static JSP_ErrorType json_object_parser(char** json);
+static JSP_ErrorType json_array_parser(char** json);
+
+inline JSP_ValueType json_value_type(char* value) {
+  switch (value[0]) {
+    case '"': return JSP_VALUE_STRING;
+    case '{': return JSP_VALUE_OBJECT;
+    case '[': return JSP_VALUE_ARRAY;
+    default : return JSP_VALUE_PRIMITIVE;
+  }
+} 
+
+static JSP_ErrorType skip_spaces(char** string) {
+  if (*string == NULL) return JSP_ERROR_NULL_INPUT;
+  switch (*string[0]) {
+    case ' ' : {*string += 1; return skip_spaces(string);};
+    default  : return JSP_OK;
+  }
 }
 
-static char * json_token_tostr(const char *js, jsmntok_t *t)
-{
-  char *local = (char *)js;
-  local[t->end] = '\0';
-  return local + t->start;
+static JSP_ErrorType skip_character(char to_skip, char** string) {
+  JSP_ErrorType error;
+  if (*string == NULL) return JSP_ERROR_NULL_INPUT;
+
+  error = skip_spaces(string);
+  if (error != JSP_OK) return error;
+
+  if (*string[0] != to_skip) return JSP_ERROR_NOT_FOUND;
+
+  *string += 1;
+
+  error = skip_spaces(string);
+  if (error != JSP_OK) return error;
+  return JSP_OK;
 }
 
-// num_tokens - number of tokens in object, 0 for objects and primitives
-// label is a pointer of the label of the value, object or array, null in case new label is expected
-static unsigned int depth = 0;
-static char labels[3/*max depth*/][20/*max label size*/];
-int fill_forecast_struct(const char* js, jsmntok_t * tokens, unsigned int num_tokens, unsigned int i, char* label) 
-{
-  unsigned int error = 0;
+static JSP_ErrorType remaining_string_length(char* string, uint16_t *length) {
+  DEEP_DEBUG_CODE(LOG_DEBUG("string length %d %x %c --%s--", *length, string[0], string[0], string));
+  switch (string[0]) {
+    case '\0': 
+      return JSP_ERROR_UNEXPECTED_END;
+    case '"' : 
+      *length += 1;
+      return JSP_OK; // end of string
+    default  :
+      *length += 1;
+      return remaining_string_length(string + 1, length);
+  }
+}
 
-  if (depth > ARRAY_LENGTH(labels)) log_die("We are too deep");
+static JSP_ErrorType string_length(char* string, uint16_t *length) {
+  if (!string) return JSP_ERROR_NULL_INPUT;
+  switch (string[0]) {
+    case '\0' : 
+      return JSP_EMPTY; // end of string
+    case '"': 
+      *length += 1;
+      return remaining_string_length(string + 1, length);
+    default  : 
+      return JSP_ERROR_NOT_STRING;
+  }
+}
 
-  do
-  {
-    jsmntok_t *t = &tokens[i];
+static JSP_ErrorType primitive_length(char* string, uint16_t *length) {
+  DEEP_DEBUG_CODE(LOG_DEBUG("primitive length %d %x %c --%s--", *length, string[0], string[0], string));
+  if (!string) return JSP_ERROR_NULL_INPUT;
+  switch (string[0]) {
+    case '\0': 
+      return (*length == 0)? JSP_EMPTY : JSP_ERROR_UNEXPECTED_END; // empty
+    case ',' : 
+    case '}' :
+    case ']' :
+    case ' ' :
+    case '\n':
+    case '\r': 
+      return (*length)? JSP_OK : JSP_ERROR_UNEXPECTED_END; // end of primitive
+   case '"':
+      return JSP_ERROR_UNEXPECTED_QUOTE;
+    case '.' :
+    case '0' :
+    case '1' :
+    case '2' :
+    case '3' :
+    case '4' :
+    case '5' : 
+    case '6' : 
+    case '7' : 
+    case '8' :
+    case '9' :
+      *length += 1;
+      return primitive_length(string + 1, length);
+    default:
+      return JSP_ERROR_UNEXPECTED_CHAR_IN_PRIMITIVE;
+  }
+}
+
+static JSP_ErrorType remaining_object_length(char* string, uint16_t *length, uint8_t *depth) {
+  DEEP_DEBUG_CODE(LOG_DEBUG("object length %d depth %d %x %c --%s--", *length, *depth, string[0], string[0], string));
+  switch (string[0]) {
+    case '\0': 
+      return JSP_ERROR_UNEXPECTED_END;
+    case '{': // new object
+      *length += 1;
+      *depth += 1;
+      return remaining_object_length(string + 1, length, depth);
+    case '}' :
+      *length += 1;
+      if (*depth) {
+        *depth -= 1;
+        return remaining_object_length(string + 1, length, depth);
+      }
+      return JSP_OK; // end of object
+    default  :
+      *length += 1;
+      return remaining_object_length(string + 1, length, depth);
+  }
+}
+
+static JSP_ErrorType object_length(char* string, uint16_t *length) {
+  if (!string) return JSP_ERROR_NULL_INPUT;
+  switch (string[0]) {
+    case '\0' : 
+      return JSP_EMPTY; // end of string
+    case '{': {
+      uint8_t depth = 0;
+      *length += 1;
+      return remaining_object_length(string + 1, length, &depth);
+    }
+    default  : 
+      return JSP_ERROR_NOT_OBJECT;
+  }
+}
+
+static JSP_ErrorType remaining_array_length(char* string, uint16_t *length, uint8_t *depth) {
+  DEEP_DEBUG_CODE(LOG_DEBUG("array length %d depth %d %x %c --%s--", *length, *depth, string[0], string[0], string));
+  switch (string[0]) {
+    case '\0': 
+      return JSP_ERROR_UNEXPECTED_END;
+    case '[': // new array
+      *length += 1;
+      *depth += 1;
+      return remaining_array_length(string + 1, length, depth);
+    case ']' :
+      *length += 1;
+      if (*depth) {
+        *depth -= 1;
+        return remaining_array_length(string + 1, length, depth);
+      }
+      return JSP_OK; // end of object
+    default  :
+      *length += 1;
+      return remaining_array_length(string + 1, length, depth);
+  }
+}
+
+static JSP_ErrorType array_length(char* string, uint16_t *length) {
+  if (!string) return JSP_ERROR_NULL_INPUT;
+  switch (string[0]) {
+    case '\0' : 
+      return JSP_EMPTY; // end of string
+    case '[': {
+      uint8_t depth = 0;
+      *length += 1;
+      return remaining_array_length(string + 1, length, &depth);
+    }
+    default  : 
+      return JSP_ERROR_NOT_ARRAY;
+  }
+}
+
+static JSP_ErrorType value_length(char* string, uint16_t *length) {
+  // Requires a pointer to first character of value, without spaces
+  if (!string) return JSP_ERROR_NULL_INPUT;
+  switch (json_value_type(string)) {
+    case JSP_VALUE_OBJECT: return object_length(string, length);
+    case JSP_VALUE_ARRAY : return array_length(string, length);
+    case JSP_VALUE_STRING: return string_length(string, length);
+    default              : return primitive_length(string, length);
+  }
+}
+
+static JSP_ErrorType json_value_parser(char** json, JSP_ArrayCallback callback) {
+  // we can have a primitive, string, object or array value
+  // If this is an object, process it, 
+  // If this is an array, process the values to see if there are objects in it
+  // otherwise skip over it
+
+  skip_spaces(json);
+
+  switch (json_value_type(*json)) {
+    case JSP_VALUE_OBJECT: { // if object, process it
+      JSP_ErrorType result = json_object_parser(json);
+      if (result != JSP_OK) return result;
+      break;
+    }
+    case JSP_VALUE_ARRAY: { // if array, process it
+      JSP_ErrorType result = json_array_parser(json);
+      if (result != JSP_OK) return result;
+      break;
+    }
+    default: { // otherwise, callback & skip over it
+      uint16_t length = 0;
+      JSP_ErrorType result = value_length(*json, &length);
+      if (result != JSP_OK) return result;
+
+      DEBUG_CODE(print_value(*json, length));
+
+      // Callback
+      LOG_DEBUG("CALLBACK value");
+      if (callback) callback(json_value_type(*json), *json, length);
+      
+      *json += length;
+    }
+  }
+
+  skip_spaces(json);
+
+  return JSP_OK;
+}
+
+static JSP_ErrorType json_pair_parser(char** json) {
+  // we shopuld have pairs label:value, the label needs to be a string, value - string, primitive, object or array
+  LOG_DEBUG("json_pair_parser %s", *json);
+
+  uint16_t length = 0;
+  JSP_ErrorType result;
+  char* label_ptr;
+  uint16_t label_len;
+
+  skip_spaces(json);
+
+  result = string_length(*json, &length);
+  if (result != JSP_OK) return result;
+
+  label_ptr = *json + 1;
+  label_len = length - 2;
+ 
+  // process value, and issue call back
+
+  // skip label
+  *json += length; 
+  // skip semicolon
+  result = skip_character(':', json);
+  if (result != JSP_OK) return result;
     
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "fill_forecast_struct depth %d %s i %d num %d label %s type %d", depth, depth?labels[depth]-1:"root", i, num_tokens, label?label:"none", t->type);
+  // count the value length 
+  length = 0; 
+  result = value_length(*json, &length);
+  if (result != JSP_OK) return result;
+
+  DEBUG_CODE(print_pair(label_ptr, label_len, *json, length));
+
+  // Callback
+  LOG_DEBUG("CALLBACK pair");
+  if (object_callback_ptr) object_callback_ptr(json_value_type(*json), label_ptr, label_len, *json, length);
+
+  // skip the value if it us a primitive or string or go deeper otherwise
+  result = json_value_parser(json, NULL);
+  if (result != JSP_OK) return result;
   
-    if (!label && t->type!=JSMN_STRING) log_die("Label must be a string");
+  skip_spaces(json);
 
-    switch (t->type)
-    {
-      case JSMN_PRIMITIVE:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_PRIMITIVE - %s { %s : %s }", depth?labels[depth-1]:"root", label?label:"none", json_token_tostr(js, t));
-        break;
-      case JSMN_STRING:
-          if (!label) {
-            char* new_label = json_token_tostr(js, t);
-            //APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - label %s", new_label);
-            error = fill_forecast_struct(js, &tokens[++i], 0, 0, new_label);
-          } else {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - %s { %s : %s }", depth?labels[depth-1]:"root", label, json_token_tostr(js, t));
-          }
-        break;
-      case JSMN_OBJECT:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_OBJECT label %s %s", depth?labels[depth]-1:"root", label?label:"none");
-        snprintf(labels[depth++], 20, label);
-        error = fill_forecast_struct(js, &tokens[++i], t->size, 0, NULL);
-        depth--;
-        break;
-      case JSMN_ARRAY:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_ARRAY label %s %s", depth?labels[depth-1]:"root", label?label:"none");
-        snprintf(labels[depth++], 20, label);
-        error = fill_forecast_struct(js, &tokens[++i], t->size, 0, NULL);
-        depth--;
-        break;
-      default:
-        log_die("Invalid state");
-    }
-  } while (!error && ++i <= num_tokens);
-
-  return error;
+  return JSP_OK;
 }
 
-/*enum states {
-  HEADER, HEADER_CONTENT, 
-  CITY, CITY_CONTENT, 
-  LIST
-};
+static JSP_ErrorType json_object_parser(char** json) {
+  // we should have json object {pair, pair, pair}
+  LOG_DEBUG("json_object_parser %s", *json);
 
-int fill_forecast_struct(char* js, jsmntok_t * tokens, unsigned int num_tokens)
-{
-  int error = 0;
-  // state is the current state of the parser
-  int state = HEADER;
+  JSP_ErrorType result;
 
-  for (size_t i = 0; i < num_tokens; ++i)
-  {
-    jsmntok_t *t = &tokens[i];
+  // skip {
+  result = skip_character('{', json);
+  if (result != JSP_OK) return result;
 
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Dump %d %d %d", i, t->type, t->size);
+  do {
+    // parse the pair
+    result = json_pair_parser(json);
+    if (result != JSP_OK) return result;
+    
+    // now, we may have an end of object or next pair
+    DEEP_DEBUG_CODE(LOG_DEBUG("json_object_parser checking character %s ", *json));
+    if (*json[0] == ',') {
+      *json += 1; 
+      continue;
+    } else if (*json[0] == '}') {
+      *json += 1;
+      break; 
+    } else return JSP_ERROR_UNEXPECTED_CHAR_IN_OBJECT;
+    
+  } while (1);
+
+
+  return JSP_OK;
+}
+
+static JSP_ErrorType json_array_parser(char** json) {
+  // we should have json array [value, value, value]
+  LOG_DEBUG("json_array_parser %s", *json);
+
+  JSP_ErrorType result;
+
+  // skip {
+  result = skip_character('[', json);
+  if (result != JSP_OK) return result;
+
+  do {
+    // parse the value
+    result = json_value_parser(json, array_callback_ptr);
+    if (result != JSP_OK) return result;
+
+    // now, we may have an end of array or next pair
+    DEEP_DEBUG_CODE(LOG_DEBUG("json_array_parser checking character %s ", *json));
+    if (*json[0] == ',') {
+      *json += 1; 
+      continue;
+    } else if (*json[0] == ']') {
+      *json += 1;
+      break; 
+    } else return JSP_ERROR_UNEXPECTED_CHAR_IN_ARRAY;
+    
+  } while (1);
+
+  return JSP_OK;
+}
+
+JSP_ErrorType json_register_callbacks(JSP_ObjectCallback object_callback, JSP_ArrayCallback array_callback) {
+  object_callback_ptr = object_callback;
+  array_callback_ptr = array_callback;
+  return JSP_OK;
+}
+
+JSP_ErrorType json_parser(const char* json_in) {
+  char* json = (char*) json_in;
+  if (!json) return JSP_ERROR_NULL_INPUT;
+  switch (json_value_type(json)) {
+    case JSP_VALUE_OBJECT: return json_object_parser(&json);
+    case JSP_VALUE_ARRAY : return json_array_parser(&json);
+    default              : return JSP_ERROR_NOT_JSON;
   }
-
-  for (size_t i = 0, j = 1; j > 0; i++, j--)
-  {
-    jsmntok_t *t = &tokens[i];
-
-    // Add the items in current array or object
-    if (t->type == JSMN_ARRAY || t->type == JSMN_OBJECT)
-      j += t->size;
-
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "Loop %d %d", i, j);
-
-    switch (state) {
-      case HEADER:
-        if (t->type == JSMN_OBJECT) state = HEADER_CONTENT;
-        else log_die("The header should be an object");
-        break;
-
-      case HEADER_CONTENT:
-        if (j % 2 == 0) { // label
-          if (t->type == JSMN_STRING && json_token_streq(js, t, "city")) {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "City");
-            state = CITY;
-            break;
-          } else if (t->type == JSMN_STRING && json_token_streq(js, t, "list")) {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "City");
-            state = LIST;
-            break;
-          }
-        }
-
-      case CITY:
-        if (t->type == JSMN_OBJECT) state = CITY_CONTENT;
-        else log_die("The header should be an object");
-        break;  
-
-     case CITY_CONTENT:
-        if (j % 2 == 0) { // label
-          if (t->type == JSMN_STRING && json_token_streq(js, t, "name")) {
-            APP_LOG(APP_LOG_LEVEL_DEBUG, "Name");
-            break;
-          }
-        }        
-    }
-  */  
-/*    switch (t->type)
-    {
-      case JSMN_PRIMITIVE:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_PRIMITIVE - value %s", json_token_tostr(js, t));
-        break;
-      case JSMN_OBJECT:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_OBJECT");
-        break;
-      case JSMN_ARRAY:
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_ARRAY");
-        break;
-      case JSMN_STRING:
-        // if j is even, we have a label
-        if (j % 2 == 0) {
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - label %s", json_token_tostr(js, t));
-        } else {
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "JSMN_STRING - value %s", json_token_tostr(js, t));
-        }
-        break;
-      default:
-        log_die("Invalid state");
-    }
-  
-  
-  }
-  return error;
-}*/
+}

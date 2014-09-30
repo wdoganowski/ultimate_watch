@@ -9,7 +9,10 @@
     "watchface": false
   },
   "appKeys": {
-    "data": 0
+    "error": 0,
+    "city": 1,
+    "cnt": 2,
+    "forecast": 3
   },
   "resources": {
     "media": [

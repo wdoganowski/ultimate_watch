@@ -1,5 +1,8 @@
 #include "pebble.h"
 
+#define DEBUG_ON
+#include "debug.h"
+
 #include "ultimate_watch.h"
 #include "weather.h"
 #include "openweather.h"
@@ -16,20 +19,20 @@ extern Layer *hands_layer;
 static void weather_update_proc(void) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "Wetaher callback received");
 
-  if (forecast_header.cnt) {
+  if (forecast_data.day && forecast_data.cnt != 0) {
 
     // Icon
     if (icon_bitmap) {
       gbitmap_destroy(icon_bitmap);
     }
-    uint32_t icon_resource = find_icon_resource(weather_icons_16, forecast_data[0].weather.icon);
+    uint32_t icon_resource = find_icon_resource(weather_icons_16, forecast_data.day->weather.icon);
     icon_bitmap = gbitmap_create_with_resource(icon_resource);
     bitmap_layer_set_bitmap(icon_layer, icon_bitmap);
 
     // Temperature
-    snprintf(temperature, sizeof(temperature), "%s\u00B0C", forecast_data[0].temp.day);
+    snprintf(temperature, sizeof(temperature), "%s\u00B0C", forecast_data.day->temp.day);
     text_layer_set_text(temperature_layer, temperature);
-  }
+  } else LOG_DEBUG("Weather data not available yet");
 }
 
 void weather_window_load(Window *window) {
