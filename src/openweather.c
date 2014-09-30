@@ -1,4 +1,6 @@
 #include "pebble.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #define DEBUG_ON
 #include "debug.h"
@@ -15,10 +17,7 @@ static OpenweatherCallback callback_stack[OPENWEATHER_MAX_CALLBACKS] = {NULL, NU
 static uint8_t callback_num = 0;
 
 enum WeatherKey {
-  OPENWEATHER_ERROR_KEY    = 0, // TUPLE_CSTRING
-  OPENWEATHER_CITY_KEY     = 1, // TUPLE_CSTRING
-  OPENWEATHER_CNT_KEY      = 2, // TUPLE_INT
-  OPENWEATHER_FORECAST_KEY = 3, // TUPLE_CSTRING
+  OPENWEATHER_KEY    = 0, // TUPLE_CSTRING
 };
 
 ForecastType forecast_data = {NULL, 0, NULL};
@@ -188,6 +187,21 @@ static void openweather_issue_callbacks(void) {
   }
 }
 
+static void set_string(char** dest, const char* source, uint16_t length) {      
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "Set string: size %d dest %s source %s", length, (*dest)?(*dest):"NULL", source?source:"NULL");
+  if (*dest) free(*dest);
+  *dest = malloc(length + 1);
+  if (*dest) strncpy(*dest, source, length);
+}
+
+inline uint16_t count_until(char c, char* source, uint16_t length) {
+  for (uint16_t i = 0; i < length; ++i)
+  {
+    if (source[i] == c) return i;
+  }
+  return length;
+}
+
 void object_callback(JSP_ValueType type, char* label, uint16_t label_length, char* value, uint16_t value_length) {
 /*  char* l = calloc(label_length + 1, sizeof(char)); 
   char* v = calloc(value_length + 1, sizeof(char)); 
@@ -201,10 +215,20 @@ void object_callback(JSP_ValueType type, char* label, uint16_t label_length, cha
   free(l); 
 */
   if (forecast_data.day) {
-    forecast_data.day->temp.day = "20";
-    forecast_data.day->weather.icon = "01d";
-    forecast_data.cnt = 1;
-  }
+    if (strncmp(label, "day", 3) == 0) {
+
+      if (forecast_data.cnt < OPENWEATHER_FCAST_DAYS) {
+
+        char buf[10];
+        strncpy(buf, value, value_length);
+        forecast_data.day[forecast_data.cnt].temp.day = atoi(buf);
+        
+        forecast_data.day->weather.icon = "01d";
+        forecast_data.cnt += 1;
+      }
+
+    }
+  }  
 }
 
 void array_callback(JSP_ValueType type, char* value, uint16_t value_length) {
@@ -228,13 +252,6 @@ static void sync_error_callback(DictionaryResult dict_error, AppMessageResult ap
   }
 }
 
-static void set_string(char** dest, const char* source) {      
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, "Set string: dest %s source %s size %d", (*dest)?(*dest):"NULL", source?source:"NULL", strlen(source));
-  if (*dest) free(*dest);
-  *dest = malloc(strlen(source));
-  if (*dest) strcpy(*dest, source);
-}
-
 static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tuple, const Tuple* old_tuple, void* context) {
   APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync received: %lu", key);
 
@@ -242,33 +259,19 @@ static void sync_tuple_changed_callback(const uint32_t key, const Tuple* new_tup
   if (update_interval != OPENWEATHER_REFRESH_INTERVAL) set_timer(OPENWEATHER_REFRESH_INTERVAL);
 
   // Interpret the forecast
-  switch (key) {
-    case OPENWEATHER_ERROR_KEY:
-      LOG_ERROR("Error received %s", new_tuple->value->cstring);
-      break;
-    case OPENWEATHER_CITY_KEY:
-      // reset the forecast & set the city
-      forecast_data.cnt = 0;
-      set_string(&(forecast_data.city), new_tuple->value->cstring);
-      LOG_DEBUG("City set %s cnt %d", forecast_data.city?forecast_data.city:"NULL", forecast_data.cnt);
-      break;
-    case OPENWEATHER_CNT_KEY:
-      LOG_DEBUG("Cnt received %d", new_tuple->value->uint8);
-      break;
-    case OPENWEATHER_FORECAST_KEY: {
-        if (new_tuple->value->cstring)
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
-        else 
-          APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: NULL");
+  if (key == OPENWEATHER_KEY) {
+    if (new_tuple->value->cstring)
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: size %u ***%s***", (unsigned int)strlen(new_tuple->value->cstring), new_tuple->value->cstring);
+    else 
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Data: NULL");
 
-        JSP_ErrorType result = json_parser(new_tuple->value->cstring);
-        if (result == JSP_OK) openweather_issue_callbacks();
-        else LOG_DEBUG("Json parser error 0x%x", result);
-      }
-      break;
-    default:
-      LOG_ERROR("Unknown key received %lu", key);
-  }
+    forecast_data.cnt = 0;
+
+    JSP_ErrorType result = json_parser(new_tuple->value->cstring);
+    if (result == JSP_OK) openweather_issue_callbacks();
+    else LOG_DEBUG("Json parser error 0x%x", result);
+
+  } else LOG_ERROR("Unknown key received %lu", key);
 }
 
 static void update_proc(void *data) {
@@ -318,10 +321,7 @@ void openweather_init(void) {
 
   // Init sync
   Tuplet initial_values[] = {
-    TupletCString(OPENWEATHER_ERROR_KEY, ""), 
-    TupletCString(OPENWEATHER_CITY_KEY, ""),
-    TupletInteger(OPENWEATHER_CNT_KEY, 0),
-    TupletCString(OPENWEATHER_FORECAST_KEY, "")
+    TupletCString(OPENWEATHER_KEY, "")
   };
   app_sync_init(&sync, sync_buffer, sizeof(sync_buffer), initial_values, ARRAY_LENGTH(initial_values),
       sync_tuple_changed_callback, sync_error_callback, NULL);

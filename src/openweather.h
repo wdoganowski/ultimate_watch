@@ -16,7 +16,7 @@ typedef struct WeatherIcon {
 typedef struct ForecastDayType {
   unsigned long dt;
   struct temp {
-    char* day;
+    int day;
     char* min;
     char* max;
     char* night;
@@ -39,7 +39,7 @@ typedef struct ForecastDayType {
 typedef struct ForecastType {
   char* city;
   unsigned int cnt;
-  ForecastDayType * day;
+  ForecastDayType* day;
 } ForecastType;
 
 extern ForecastType forecast_data;

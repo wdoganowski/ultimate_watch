@@ -7,9 +7,10 @@
 #include "weather.h"
 #include "openweather.h"
 
+#define WEATHER_TEMP_LENGTH 6
 static OpenweatherCallback weather_callback = NULL;
 
-static char temperature[6]; // "-99oC"
+static char temperature[WEATHER_TEMP_LENGTH]; // "-99oC"
 static TextLayer *temperature_layer;
 static BitmapLayer *icon_layer;
 static GBitmap *icon_bitmap = NULL;
@@ -29,8 +30,11 @@ static void weather_update_proc(void) {
     icon_bitmap = gbitmap_create_with_resource(icon_resource);
     bitmap_layer_set_bitmap(icon_layer, icon_bitmap);
 
-    // Temperature
-    snprintf(temperature, sizeof(temperature), "%s\u00B0C", forecast_data.day->temp.day);
+    // Temperature "%s\u00B0C"
+    // strncpy(temperature, forecast_data.day->temp.day, WEATHER_TEMP_LENGTH);
+    // strncpy(temperature+2, "\u00B0C",  WEATHER_TEMP_LENGTH-2);
+    snprintf(temperature, WEATHER_TEMP_LENGTH, "% 3d\u00B0C", forecast_data.day->temp.day);
+    // LOG_DEBUG("Temperature %s -> %s", forecast_data.day->temp.day, temperature);
     text_layer_set_text(temperature_layer, temperature);
   } else LOG_DEBUG("Weather data not available yet");
 }

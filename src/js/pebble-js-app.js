@@ -28,12 +28,12 @@ function fetchWeather(latitude, longitude) {
 
   req.addEventListener("error", function(e) {
     console.log("Error handler");
-    messages.push({"error":'{"error":"http error"}'});
+    messages.push({"data":'{"error":"http error"}'});
     sendMessage();
   }, false);
   req.addEventListener("abort", function(e) {
     console.log("Abort handler");
-    messages.push({"error":'{"error":"http abort"}'});
+    messages.push({"data":'{"error":"http abort"}'});
     sendMessage();
   }, false);
 
@@ -44,21 +44,10 @@ function fetchWeather(latitude, longitude) {
     if (req.readyState == 4) {
       if(req.status == 200) {
         console.log(req.responseText);
-        response = JSON.parse(req.responseText);
-        if (response && response.list && response.list.length > 0) {
-          messages.push({"city": response.city.name.replace(/[^\x00-\x7F]/g, "_")})
-          sendMessage(); 
-          messages.push({"cnt": response.list.length})
-          sendMessage(); 
-          /*for (var i = 0; i < response.list.length; i++)*/ {var i=0;
-            messages.push({"forecast": '{"day":' + i + ', "data": ' + JSON.stringify(response.list[i]) + '}'}); 
-            sendMessage(); 
-          }
-        } else {
-          console.log("JSON Error");
-          messages.push({"error":'{"error":"json error"}'});
-          sendMessage();
-        }
+
+        messages.push({"data": req.responseText});
+        sendMessage();
+
       } else {
         console.log("HTTP Error");
         messages.push({"error":'{"error":"http error"}'});
